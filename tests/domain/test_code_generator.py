@@ -1,0 +1,241 @@
+import pytest
+from domain.entities.schema_metadata import (
+    ColumnMetadata,
+    FlexfieldInfo,
+    TableClassification,
+    DbtModelSpec,
+)
+from domain.services.code_generator_service import CodeGeneratorService
+
+
+@pytest.fixture
+def service():
+    return CodeGeneratorService()
+
+
+@pytest.fixture
+def gl_headers_table():
+    return TableClassification(
+        table_name="GL_JE_HEADERS",
+        module="GL",
+        table_type="transactional",
+        columns=[
+            ColumnMetadata("JE_HEADER_ID", "NUMBER", False, is_primary_key=True),
+            ColumnMetadata("LEDGER_ID", "NUMBER", False),
+            ColumnMetadata("JE_BATCH_ID", "NUMBER", False, is_foreign_key=True, fk_target_table="GL_JE_BATCHES", fk_target_column="JE_BATCH_ID"),
+            ColumnMetadata("PERIOD_NAME", "VARCHAR2", False, data_length=15),
+            ColumnMetadata("NAME", "VARCHAR2", True, data_length=100),
+            ColumnMetadata("POSTED_DATE", "DATE", True),
+            ColumnMetadata("STATUS", "VARCHAR2", False, data_length=1),
+        ],
+        primary_key_columns=["JE_HEADER_ID"],
+        description="GL Journal Entry Headers",
+    )
+
+
+@pytest.fixture
+def ap_invoices_table():
+    return TableClassification(
+        table_name="AP_INVOICES_ALL",
+        module="AP",
+        table_type="transactional",
+        columns=[
+            ColumnMetadata("INVOICE_ID", "NUMBER", False, is_primary_key=True),
+            ColumnMetadata("VENDOR_ID", "NUMBER", False, is_foreign_key=True, fk_target_table="AP_SUPPLIERS", fk_target_column="VENDOR_ID"),
+            ColumnMetadata("INVOICE_NUM", "VARCHAR2", False, data_length=50),
+            ColumnMetadata("INVOICE_AMOUNT", "NUMBER", True, data_precision=15, data_scale=2),
+            ColumnMetadata("INVOICE_DATE", "DATE", False),
+            ColumnMetadata("INVOICE_CURRENCY_CODE", "VARCHAR2", False, data_length=15),
+            ColumnMetadata("ATTRIBUTE1", "VARCHAR2", True, data_length=150),
+            ColumnMetadata("ATTRIBUTE2", "VARCHAR2", True, data_length=150),
+        ],
+        flexfields=[
+            FlexfieldInfo("DFF", "AP_INVOICES_ALL", ["ATTRIBUTE1", "ATTRIBUTE2"], "Invoice DFF"),
+        ],
+        primary_key_columns=["INVOICE_ID"],
+        description="AP Invoices (all organizations)",
+    )
+
+
+@pytest.fixture
+def coa_table():
+    return TableClassification(
+        table_name="GL_CODE_COMBINATIONS",
+        module="GL",
+        table_type="reference",
+        columns=[
+            ColumnMetadata("CODE_COMBINATION_ID", "NUMBER", False, is_primary_key=True),
+            ColumnMetadata("SEGMENT1", "VARCHAR2", True, data_length=25),
+            ColumnMetadata("SEGMENT2", "VARCHAR2", True, data_length=25),
+            ColumnMetadata("SEGMENT3", "VARCHAR2", True, data_length=25),
+            ColumnMetadata("ENABLED_FLAG", "VARCHAR2", False, data_length=1),
+        ],
+        flexfields=[
+            FlexfieldInfo("KFF", "GL_CODE_COMBINATIONS", ["SEGMENT1", "SEGMENT2", "SEGMENT3"], "Accounting Flexfield"),
+        ],
+        primary_key_columns=["CODE_COMBINATION_ID"],
+    )
+
+
+# --- Type Mapping Tests ---
+
+
+def test_oracle_to_bq_type_varchar(service):
+    assert service.map_oracle_type_to_bq("VARCHAR2") == "STRING"
+
+
+def test_oracle_to_bq_type_number(service):
+    assert service.map_oracle_type_to_bq("NUMBER") == "NUMERIC"
+
+
+def test_oracle_to_bq_type_date(service):
+    assert service.map_oracle_type_to_bq("DATE") == "TIMESTAMP"
+
+
+def test_oracle_to_bq_type_clob(service):
+    assert service.map_oracle_type_to_bq("CLOB") == "STRING"
+
+
+def test_oracle_to_bq_type_blob(service):
+    assert service.map_oracle_type_to_bq("BLOB") == "BYTES"
+
+
+def test_oracle_to_bq_type_with_precision(service):
+    assert service.map_oracle_type_to_bq("NUMBER(15,2)") == "NUMERIC"
+
+
+def test_oracle_to_bq_type_unknown(service):
+    assert service.map_oracle_type_to_bq("UNKNOWN_TYPE") == "STRING"
+
+
+# --- Model Name Tests ---
+
+
+def test_model_name_staging(service):
+    assert service.generate_model_name("GL_JE_HEADERS", "staging") == "stg_gl_je_headers"
+
+
+def test_model_name_intermediate(service):
+    assert service.generate_model_name("AP_INVOICES_ALL", "intermediate") == "int_ap_invoices"
+
+
+def test_model_name_mart(service):
+    assert service.generate_model_name("GL_BALANCES", "mart") == "mart_gl_balances"
+
+
+# --- Staging SQL Generation Tests ---
+
+
+def test_staging_sql_contains_source_ref(service, gl_headers_table):
+    sql = service.generate_staging_sql(gl_headers_table)
+    assert "source('oracle_gl', 'gl_je_headers')" in sql
+
+
+def test_staging_sql_casts_columns(service, gl_headers_table):
+    sql = service.generate_staging_sql(gl_headers_table)
+    assert "CAST(JE_HEADER_ID AS NUMERIC) AS je_header_id" in sql
+    assert "CAST(POSTED_DATE AS TIMESTAMP) AS posted_date" in sql
+    assert "CAST(PERIOD_NAME AS STRING) AS period_name" in sql
+
+
+def test_staging_sql_header_comment(service, gl_headers_table):
+    sql = service.generate_staging_sql(gl_headers_table)
+    assert "Generated by OracleForge Code Generator" in sql
+    assert "GL_JE_HEADERS" in sql
+
+
+# --- YAML Generation Tests ---
+
+
+def test_staging_yaml_contains_model_name(service, gl_headers_table):
+    yaml = service.generate_staging_yaml(gl_headers_table, "stg_gl_je_headers")
+    assert "name: stg_gl_je_headers" in yaml
+
+
+def test_staging_yaml_pk_tests(service, gl_headers_table):
+    yaml = service.generate_staging_yaml(gl_headers_table, "stg_gl_je_headers")
+    assert "- unique" in yaml
+    assert "- not_null" in yaml
+
+
+def test_staging_yaml_fk_description(service, gl_headers_table):
+    yaml = service.generate_staging_yaml(gl_headers_table, "stg_gl_je_headers")
+    assert "Foreign key to GL_JE_BATCHES" in yaml
+
+
+def test_staging_yaml_tags(service, gl_headers_table):
+    yaml = service.generate_staging_yaml(gl_headers_table, "stg_gl_je_headers")
+    assert "'gl'" in yaml
+    assert "'staging'" in yaml
+    assert "'oracle_migration'" in yaml
+
+
+def test_staging_yaml_flexfield_metadata(service, ap_invoices_table):
+    yaml = service.generate_staging_yaml(ap_invoices_table, "stg_ap_invoices")
+    assert "flexfields:" in yaml
+    assert "type: DFF" in yaml
+    assert "Invoice DFF" in yaml
+
+
+# --- Source YAML Tests ---
+
+
+def test_source_yaml_generation(service, gl_headers_table, coa_table):
+    yaml = service.generate_source_yaml([gl_headers_table, coa_table], "GL")
+    assert "oracle_gl" in yaml
+    assert "gl_je_headers" in yaml
+    assert "gl_code_combinations" in yaml
+    assert "bronze_gl" in yaml
+
+
+# --- Entity Tests ---
+
+
+def test_table_classification_has_flexfields(ap_invoices_table):
+    assert ap_invoices_table.has_flexfields is True
+
+
+def test_table_classification_no_flexfields(gl_headers_table):
+    assert gl_headers_table.has_flexfields is False
+
+
+def test_table_classification_segment_columns(coa_table):
+    assert coa_table.segment_columns == ["SEGMENT1", "SEGMENT2", "SEGMENT3"]
+
+
+def test_table_classification_attribute_columns(ap_invoices_table):
+    assert ap_invoices_table.attribute_columns == ["ATTRIBUTE1", "ATTRIBUTE2"]
+
+
+# --- Build Model Tests ---
+
+
+def test_build_staging_model(service, gl_headers_table):
+    model = service.build_staging_model(gl_headers_table)
+    assert model.model_name == "stg_gl_je_headers"
+    assert model.layer == "staging"
+    assert model.module == "GL"
+    assert model.materialization == "view"
+    assert "source('oracle_gl'" in model.sql_content
+    assert "name: stg_gl_je_headers" in model.yaml_content
+
+
+def test_build_intermediate_model(service, ap_invoices_table):
+    model = service.build_intermediate_model(ap_invoices_table)
+    assert model.model_name == "int_ap_invoices"
+    assert model.layer == "intermediate"
+    assert "ref('stg_ap_invoices')" in model.sql_content
+
+
+def test_dbt_model_spec_properties():
+    spec = DbtModelSpec(
+        model_name="stg_test",
+        source_table="TEST_TABLE",
+        module="GL",
+        layer="staging",
+        sql_content="SELECT 1",
+        yaml_content="version: 2",
+        tags=["gl", "staging"],
+    )
+    assert spec.model_name == "stg_test"
+    assert spec.materialization == "view"  # default

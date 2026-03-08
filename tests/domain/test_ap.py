@@ -47,3 +47,21 @@ def test_aging_service_buckets(sample_context):
     assert aging["0-30 days"].amount == Decimal("100.00")
     assert aging["31-60 days"].amount == Decimal("200.00")
     assert aging["61-90 days"].amount == Decimal("0.00")
+
+def test_aging_service_all_buckets(sample_context):
+    service = AgingService()
+    now = datetime.now()
+    
+    invoices = [
+        Invoice(1, "I1", 501, now - timedelta(days=10), now, Money(Decimal("10.0"), "USD"), Money(Decimal("0"), "USD"), "USD", "N", sample_context),
+        Invoice(2, "I2", 501, now - timedelta(days=45), now, Money(Decimal("20.0"), "USD"), Money(Decimal("0"), "USD"), "USD", "N", sample_context),
+        Invoice(3, "I3", 501, now - timedelta(days=75), now, Money(Decimal("30.0"), "USD"), Money(Decimal("0"), "USD"), "USD", "N", sample_context),
+        Invoice(4, "I4", 501, now - timedelta(days=100), now, Money(Decimal("40.0"), "USD"), Money(Decimal("0"), "USD"), "USD", "N", sample_context),
+    ]
+    
+    aging = service.calculate_aging(invoices, now)
+    
+    assert aging["0-30 days"].amount == Decimal("10.00")
+    assert aging["31-60 days"].amount == Decimal("20.00")
+    assert aging["61-90 days"].amount == Decimal("30.00")
+    assert aging["91+ days"].amount == Decimal("40.00")

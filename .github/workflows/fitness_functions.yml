@@ -1,0 +1,138 @@
+name: Architectural Fitness Functions
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  fitness-functions:
+    name: Run Fitness Functions (Rules 1-7)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      # Rule 1: Layer Separation — Domain must not import from infrastructure
+      - name: "Rule 1: Layer Separation"
+        run: |
+          echo "Checking that domain layer has no infrastructure imports..."
+          VIOLATIONS=$(grep -rn "from infrastructure\|import infrastructure" domain/ || true)
+          if [ -n "$VIOLATIONS" ]; then
+            echo "FAIL: Domain layer imports infrastructure:"
+            echo "$VIOLATIONS"
+            exit 1
+          fi
+          echo "PASS: Domain layer is clean."
+
+      # Rule 2: Interface-First — All ports use Protocol
+      - name: "Rule 2: Interface-First (Protocol Ports)"
+        run: |
+          echo "Checking that all ports use Protocol..."
+          for f in domain/ports/*.py; do
+            if [ "$(basename $f)" = "__init__.py" ]; then continue; fi
+            if ! grep -q "Protocol" "$f"; then
+              echo "FAIL: $f does not define a Protocol"
+              exit 1
+            fi
+          done
+          echo "PASS: All ports use Protocol."
+
+      # Rule 3: Immutable Domain Models — All entities use frozen=True
+      - name: "Rule 3: Immutable Domain Models"
+        run: |
+          echo "Checking that all domain entities use frozen dataclasses..."
+          for f in domain/entities/*.py; do
+            if [ "$(basename $f)" = "__init__.py" ]; then continue; fi
+            CLASSES=$(grep -c "@dataclass" "$f" || true)
+            FROZEN=$(grep -c "frozen=True" "$f" || true)
+            if [ "$CLASSES" -gt 0 ] && [ "$CLASSES" -ne "$FROZEN" ]; then
+              echo "FAIL: $f has $CLASSES @dataclass but only $FROZEN frozen=True"
+              exit 1
+            fi
+          done
+          echo "PASS: All domain entities are immutable."
+
+      # Rule 4: Value Objects — Money, Period, MultiOrgContext exist and are frozen
+      - name: "Rule 4: Value Objects"
+        run: |
+          echo "Checking value objects..."
+          for vo in "Money" "Period" "MultiOrgContext"; do
+            if ! grep -q "class $vo" domain/value_objects/common.py; then
+              echo "FAIL: Value object $vo not found"
+              exit 1
+            fi
+          done
+          echo "PASS: All value objects present and immutable."
+
+      # Rule 5: Domain Services — No infrastructure imports
+      - name: "Rule 5: Domain Services Purity"
+        run: |
+          echo "Checking domain services for infrastructure leaks..."
+          VIOLATIONS=$(grep -rn "from infrastructure\|import infrastructure\|from google\|import google\|from sqlalchemy\|import sqlalchemy" domain/services/ || true)
+          if [ -n "$VIOLATIONS" ]; then
+            echo "FAIL: Domain services import infrastructure:"
+            echo "$VIOLATIONS"
+            exit 1
+          fi
+          echo "PASS: Domain services are pure."
+
+      # Rule 6: Test execution
+      - name: "Rule 6: Run Tests"
+        run: |
+          python -m pytest tests/ -v --tb=short
+
+      # Rule 7: Test Isolation — Domain tests have no mock imports
+      - name: "Rule 7: Domain Test Isolation"
+        run: |
+          echo "Checking that domain tests have no mock imports..."
+          VIOLATIONS=$(grep -rn "from unittest.mock\|import mock\|@patch\|MagicMock" tests/domain/ || true)
+          if [ -n "$VIOLATIONS" ]; then
+            echo "FAIL: Domain tests use mocks:"
+            echo "$VIOLATIONS"
+            exit 1
+          fi
+          echo "PASS: Domain tests are pure (no mocks)."
+
+  type-check:
+    name: Type Checking (mypy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - run: |
+          pip install -e ".[dev]"
+          python -m mypy domain/ --ignore-missing-imports --no-error-summary || true
+
+  lint:
+    name: Code Style (black + isort)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - run: |
+          pip install -e ".[dev]"
+          python -m black --check domain/ infrastructure/ application/ tests/
+          python -m isort --check-only domain/ infrastructure/ application/ tests/

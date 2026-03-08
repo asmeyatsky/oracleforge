@@ -3,19 +3,28 @@ from infrastructure.adapters.oracle_adapter import OracleInterrogatorAdapter
 from infrastructure.adapters.mock_oracle_adapter import MockOracleAdapter
 from infrastructure.adapters.gcp_adapters import GCPTargetAdapter
 from infrastructure.adapters.secret_adapter import GCPSecretAdapter
+from infrastructure.adapters.reconciliation_adapter import ReconciliationAdapter
+from infrastructure.adapters.dbt_generator_adapter import DbtGeneratorAdapter
+from infrastructure.adapters.alloydb_adapter import AlloyDBAdapter
+from infrastructure.adapters.vertex_ai_adapter import VertexAIAdapter
 from domain.services.org_service import MultiOrgResolver
+from domain.services.reconciliation_service import ReconciliationService
+from domain.services.code_generator_service import CodeGeneratorService
+from domain.services.plsql_translator_service import PLSQLTranslatorService
 from infrastructure.mcp_servers.sie_server import OracleForgeSIEServer
+from application.use_cases.ai_workflows.multi_agent_orchestrator import MultiAgentOrchestrator
+
 
 class Container(containers.DeclarativeContainer):
     """
     Dependency Injection Container for OracleForge.
-    
-    Wiring for all domain ports and infrastructure adapters 
+
+    Wiring for all domain ports and infrastructure adapters
     as per skill2026.md Rule 2 (Interface-First Development).
     """
-    
+
     config = providers.Configuration()
-    
+
     # Infrastructure Adapters
     # Oracle Adapter
     oracle_adapter = providers.Singleton(
@@ -41,10 +50,51 @@ class Container(containers.DeclarativeContainer):
         project_id=config.gcp.project_id
     )
 
+    # Vertex AI Adapter
+    vertex_ai_adapter = providers.Singleton(
+        VertexAIAdapter,
+        project_id=config.gcp.project_id,
+        location=config.gcp.region
+    )
+
+    # Reconciliation Adapter
+    reconciliation_adapter = providers.Singleton(
+        ReconciliationAdapter,
+        oracle_connection_string=config.oracle.connection_string,
+        gcp_project_id=config.gcp.project_id
+    )
+
+    # dbt Generator Adapter
+    dbt_generator_adapter = providers.Singleton(
+        DbtGeneratorAdapter,
+        output_base_dir=config.dbt.output_dir
+    )
+
+    # AlloyDB Adapter
+    alloydb_adapter = providers.Singleton(
+        AlloyDBAdapter,
+        oracle_connection_string=config.oracle.connection_string,
+        alloydb_connection_string=config.alloydb.connection_string
+    )
+
     # Domain Services
     org_resolver = providers.Factory(
         MultiOrgResolver,
         oracle_port=oracle_adapter
+    )
+
+    reconciliation_service = providers.Factory(ReconciliationService)
+
+    code_generator_service = providers.Factory(CodeGeneratorService)
+
+    plsql_translator_service = providers.Factory(PLSQLTranslatorService)
+
+    # Application Use Cases
+    multi_agent_orchestrator = providers.Factory(
+        MultiAgentOrchestrator,
+        oracle_port=oracle_adapter,
+        gcp_port=gcp_adapter,
+        ai_port=vertex_ai_adapter
     )
 
     # MCP Servers
