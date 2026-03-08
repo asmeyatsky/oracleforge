@@ -1,0 +1,34 @@
+# OracleForge Configuration
+# Copy this file to oracleforge.yaml and customize for your environment.
+# Environment variables with ORACLEFORGE_ prefix override these values.
+
+# Use mock adapters for local development (no Oracle/GCP credentials needed)
+use_mock: true
+
+# Oracle EBS Connection
+oracle:
+  connection_string: "oracle+cx_oracle://apps:apps@oracle-host:1521/EBSDB"
+  schema_name: "APPS"
+
+# Google Cloud Platform
+gcp:
+  project_id: "my-gcp-project"
+  region: "me-central2"  # Dammam for Saudi data residency
+  bronze_dataset: "bronze"
+  silver_dataset: "silver"
+  gold_dataset: "gold"
+
+# AlloyDB Omni (for PL/SQL compatibility workloads)
+alloydb:
+  connection_string: "postgresql+psycopg2://postgres:password@alloydb-host:5432/oracleforge"
+
+# dbt Code Generation
+dbt:
+  output_dir: "./dbt_project"
+  project_name: "oracleforge_dbt"
+
+# Logging
+logging:
+  level: "INFO"
+  format: "json"  # "json" or "text"
+  # log_file: "./oracleforge.log"  # Uncomment to log to file
