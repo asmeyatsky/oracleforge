@@ -681,6 +681,154 @@ def agents_run(
 
 
 # ---------------------------------------------------------------------------
+# CDC Commands
+# ---------------------------------------------------------------------------
+
+cdc_app = typer.Typer(help="CDC replication stream management")
+app.add_typer(cdc_app, name="cdc")
+
+
+@cdc_app.command("list")
+def cdc_list():
+    """List all active CDC replication streams."""
+    _banner()
+    container = _get_container()
+    cdc_port = container.cdc_adapter()
+
+    streams = _run_async(cdc_port.list_streams())
+
+    tbl = Table(title="CDC Replication Streams", box=box.ROUNDED)
+    tbl.add_column("Stream Name", style="cyan")
+    tbl.add_column("Status", style="bold")
+    tbl.add_column("Tables", justify="right")
+    tbl.add_column("Progress", justify="right")
+    tbl.add_column("Errors", style="red")
+
+    for s in streams:
+        status_style = "green" if s.status == "RUNNING" else "yellow" if s.status == "PAUSED" else "red"
+        progress = (s.tables_synced / s.total_tables * 100) if s.total_tables > 0 else 0
+        tbl.add_row(
+            s.stream_name,
+            f"[{status_style}]{s.status}[/{status_style}]",
+            f"{s.tables_synced}/{s.total_tables}",
+            f"{progress:.1f}%",
+            ", ".join(s.errors) if s.errors else "-",
+        )
+
+    console.print(tbl)
+
+
+@cdc_app.command("create")
+def cdc_create(
+    module: str = typer.Argument(..., help="Module to replicate (GL, AP, HCM)"),
+    schema: str = typer.Option("APPS", "--schema", "-s", help="Oracle source schema"),
+):
+    """Create a new CDC stream for a specific module."""
+    _banner()
+    container = _get_container()
+    cdc_service = container.cdc_service()
+    cdc_port = container.cdc_adapter()
+    settings = container.config()
+
+    try:
+        config = cdc_service.build_stream_config(
+            module=module,
+            source_schema=schema,
+            target_dataset=settings["gcp"]["bronze_dataset"],
+            target_project=settings["gcp"]["project_id"],
+        )
+        success = _run_async(cdc_port.create_stream(config))
+        if success:
+            console.print(f"[bold green]Created CDC stream: {config.stream_name}[/bold green]")
+        else:
+            console.print("[bold red]Failed to create CDC stream[/bold red]")
+    except Exception as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
+
+
+@cdc_app.command("pause")
+def cdc_pause(stream: str = typer.Argument(..., help="Stream name to pause")):
+    """Pause a running CDC stream."""
+    _banner()
+    container = _get_container()
+    cdc_port = container.cdc_adapter()
+    success = _run_async(cdc_port.pause_stream(stream))
+    if success:
+        console.print(f"[bold yellow]Paused CDC stream: {stream}[/bold yellow]")
+    else:
+        console.print(f"[bold red]Failed to pause stream: {stream}[/bold red]")
+
+
+@cdc_app.command("resume")
+def cdc_resume(stream: str = typer.Argument(..., help="Stream name to resume")):
+    """Resume a paused CDC stream."""
+    _banner()
+    container = _get_container()
+    cdc_port = container.cdc_adapter()
+    success = _run_async(cdc_port.resume_stream(stream))
+    if success:
+        console.print(f"[bold green]Resumed CDC stream: {stream}[/bold green]")
+    else:
+        console.print(f"[bold red]Failed to resume stream: {stream}[/bold red]")
+
+
+# ---------------------------------------------------------------------------
+# Compliance Commands
+# ---------------------------------------------------------------------------
+
+compliance_app = typer.Typer(help="Data compliance and PII management")
+app.add_typer(compliance_app, name="compliance")
+
+
+@compliance_app.command("scan")
+def compliance_scan(
+    table: str = typer.Argument(..., help="Table name to scan for PII"),
+    dataset: str = typer.Option("bronze", "--dataset", "-d", help="BigQuery dataset"),
+):
+    """Scan a BigQuery table for PII (Personally Identifiable Information)."""
+    _banner()
+    console.print(f"[bold]Scanning [yellow]{dataset}.{table}[/yellow] for PII...[/bold]\n")
+
+    container = _get_container()
+    compliance_port = container.compliance_adapter()
+
+    pii_columns = _run_async(compliance_port.identify_pii(dataset, table))
+
+    if not pii_columns:
+        console.print("[bold green]No PII columns identified.[/bold green]")
+    else:
+        console.print(f"[bold red]Identified {len(pii_columns)} PII columns:[/bold red]")
+        for col in pii_columns:
+            console.print(f"  [red]- {col}[/red]")
+        console.print("\n[dim]Recommendation: Apply data masking to these columns.[/dim]")
+
+
+@compliance_app.command("report")
+def compliance_report(
+    standard: str = typer.Argument("PDPL", help="Compliance standard: PDPL, NDMO, SAMA"),
+):
+    """Generate an automated compliance audit report."""
+    _banner()
+    console.print(f"[bold]Generating {standard} Compliance Report...[/bold]\n")
+
+    container = _get_container()
+    compliance_port = container.compliance_adapter()
+
+    report = _run_async(compliance_port.generate_compliance_report(standard))
+
+    tbl = Table(title=f"Compliance Report: {standard}", box=box.ROUNDED)
+    tbl.add_column("Property", style="cyan")
+    tbl.add_column("Value", style="green")
+
+    for key, value in report.items():
+        if key != "controls":
+            tbl.add_row(key.replace("_", " ").title(), str(value))
+
+    console.print(tbl)
+    console.print(f"\n[bold green]Status: {report.get('status', 'UNKNOWN')}[/bold green]")
+
+
+# ---------------------------------------------------------------------------
 # Fitness Function Commands
 # ---------------------------------------------------------------------------
 

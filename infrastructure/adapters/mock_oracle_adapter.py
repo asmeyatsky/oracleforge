@@ -1,5 +1,7 @@
 import logging
 import re
+import json
+from pathlib import Path
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from decimal import Decimal
@@ -36,6 +38,9 @@ class MockOracleAdapter(OracleSourcePort):
     aging buckets, HCM employees with assignments, and rich schema metadata
     for the SIE. Suitable for demos, local dev, and integration tests.
     """
+
+    def __init__(self):
+        self._mock_data_path = Path(__file__).parent / "mock_data"
 
     async def get_gl_journals(self, period: Period, ledger_id: int) -> List[JournalEntry]:
         logger.info(f"MOCK: Fetching GL journals for period {period.period_name}")
@@ -219,110 +224,14 @@ class MockOracleAdapter(OracleSourcePort):
         ]
 
     async def get_schema_metadata(self) -> Dict[str, Any]:
-        logger.info("MOCK: Fetching schema metadata")
-        return {
-            "tables": [
-                {"name": "GL_JE_HEADERS", "module": "GL", "classification": "transactional",
-                 "columns": [
-                     {"column_name": "JE_HEADER_ID", "data_type": "NUMBER", "nullable": False},
-                     {"column_name": "LEDGER_ID", "data_type": "NUMBER", "nullable": False},
-                     {"column_name": "JE_BATCH_ID", "data_type": "NUMBER", "nullable": False},
-                     {"column_name": "PERIOD_NAME", "data_type": "VARCHAR2", "nullable": False, "data_length": 15},
-                     {"column_name": "NAME", "data_type": "VARCHAR2", "nullable": True, "data_length": 100},
-                     {"column_name": "POSTED_DATE", "data_type": "DATE", "nullable": True},
-                     {"column_name": "STATUS", "data_type": "VARCHAR2", "nullable": False, "data_length": 1},
-                     {"column_name": "CREATION_DATE", "data_type": "DATE", "nullable": False},
-                 ], "primary_key": ["JE_HEADER_ID"], "estimated_rows": 2100000},
-                {"name": "GL_JE_LINES", "module": "GL", "classification": "transactional",
-                 "columns": [
-                     {"column_name": "JE_HEADER_ID", "data_type": "NUMBER", "nullable": False},
-                     {"column_name": "JE_LINE_NUM", "data_type": "NUMBER", "nullable": False},
-                     {"column_name": "CODE_COMBINATION_ID", "data_type": "NUMBER", "nullable": False},
-                     {"column_name": "ENTERED_DR", "data_type": "NUMBER", "nullable": True},
-                     {"column_name": "ENTERED_CR", "data_type": "NUMBER", "nullable": True},
-                     {"column_name": "ACCOUNTED_DR", "data_type": "NUMBER", "nullable": True},
-                     {"column_name": "ACCOUNTED_CR", "data_type": "NUMBER", "nullable": True},
-                     {"column_name": "DESCRIPTION", "data_type": "VARCHAR2", "nullable": True, "data_length": 240},
-                 ], "primary_key": ["JE_HEADER_ID", "JE_LINE_NUM"], "estimated_rows": 15400000},
-                {"name": "GL_BALANCES", "module": "GL", "classification": "summary",
-                 "columns": [
-                     {"column_name": "LEDGER_ID", "data_type": "NUMBER", "nullable": False},
-                     {"column_name": "CODE_COMBINATION_ID", "data_type": "NUMBER", "nullable": False},
-                     {"column_name": "CURRENCY_CODE", "data_type": "VARCHAR2", "nullable": False, "data_length": 15},
-                     {"column_name": "PERIOD_NAME", "data_type": "VARCHAR2", "nullable": False, "data_length": 15},
-                     {"column_name": "PERIOD_NET_DR", "data_type": "NUMBER", "nullable": True},
-                     {"column_name": "PERIOD_NET_CR", "data_type": "NUMBER", "nullable": True},
-                     {"column_name": "BEGIN_BALANCE_DR", "data_type": "NUMBER", "nullable": True},
-                     {"column_name": "BEGIN_BALANCE_CR", "data_type": "NUMBER", "nullable": True},
-                 ], "primary_key": ["LEDGER_ID", "CODE_COMBINATION_ID", "CURRENCY_CODE", "PERIOD_NAME"],
-                 "estimated_rows": 890000},
-                {"name": "GL_CODE_COMBINATIONS", "module": "GL", "classification": "reference",
-                 "columns": [
-                     {"column_name": "CODE_COMBINATION_ID", "data_type": "NUMBER", "nullable": False},
-                     {"column_name": "SEGMENT1", "data_type": "VARCHAR2", "nullable": True, "data_length": 25},
-                     {"column_name": "SEGMENT2", "data_type": "VARCHAR2", "nullable": True, "data_length": 25},
-                     {"column_name": "SEGMENT3", "data_type": "VARCHAR2", "nullable": True, "data_length": 25},
-                     {"column_name": "SEGMENT4", "data_type": "VARCHAR2", "nullable": True, "data_length": 25},
-                     {"column_name": "SEGMENT5", "data_type": "VARCHAR2", "nullable": True, "data_length": 25},
-                     {"column_name": "ENABLED_FLAG", "data_type": "VARCHAR2", "nullable": False, "data_length": 1},
-                 ], "primary_key": ["CODE_COMBINATION_ID"],
-                 "flexfields": [{"type": "KFF", "name": "Accounting Flexfield",
-                                 "columns": ["SEGMENT1", "SEGMENT2", "SEGMENT3", "SEGMENT4", "SEGMENT5"]}],
-                 "estimated_rows": 45000},
-                {"name": "AP_INVOICES_ALL", "module": "AP", "classification": "transactional",
-                 "columns": [
-                     {"column_name": "INVOICE_ID", "data_type": "NUMBER", "nullable": False},
-                     {"column_name": "VENDOR_ID", "data_type": "NUMBER", "nullable": False},
-                     {"column_name": "INVOICE_NUM", "data_type": "VARCHAR2", "nullable": False, "data_length": 50},
-                     {"column_name": "INVOICE_AMOUNT", "data_type": "NUMBER", "nullable": True},
-                     {"column_name": "AMOUNT_PAID", "data_type": "NUMBER", "nullable": True},
-                     {"column_name": "INVOICE_DATE", "data_type": "DATE", "nullable": False},
-                     {"column_name": "GL_DATE", "data_type": "DATE", "nullable": False},
-                     {"column_name": "INVOICE_CURRENCY_CODE", "data_type": "VARCHAR2", "nullable": False, "data_length": 15},
-                     {"column_name": "PAYMENT_STATUS_FLAG", "data_type": "VARCHAR2", "nullable": False, "data_length": 1},
-                     {"column_name": "ORG_ID", "data_type": "NUMBER", "nullable": False},
-                     {"column_name": "ATTRIBUTE1", "data_type": "VARCHAR2", "nullable": True, "data_length": 150},
-                     {"column_name": "ATTRIBUTE2", "data_type": "VARCHAR2", "nullable": True, "data_length": 150},
-                 ], "primary_key": ["INVOICE_ID"],
-                 "flexfields": [{"type": "DFF", "name": "Invoice DFF", "columns": ["ATTRIBUTE1", "ATTRIBUTE2"]}],
-                 "estimated_rows": 3200000},
-                {"name": "AP_INVOICE_LINES_ALL", "module": "AP", "classification": "transactional",
-                 "columns": [
-                     {"column_name": "INVOICE_ID", "data_type": "NUMBER", "nullable": False},
-                     {"column_name": "LINE_NUMBER", "data_type": "NUMBER", "nullable": False},
-                     {"column_name": "AMOUNT", "data_type": "NUMBER", "nullable": True},
-                     {"column_name": "DESCRIPTION", "data_type": "VARCHAR2", "nullable": True, "data_length": 240},
-                     {"column_name": "DIST_CODE_COMBINATION_ID", "data_type": "NUMBER", "nullable": True},
-                 ], "primary_key": ["INVOICE_ID", "LINE_NUMBER"], "estimated_rows": 8700000},
-                {"name": "AP_SUPPLIERS", "module": "AP", "classification": "master_data",
-                 "columns": [
-                     {"column_name": "VENDOR_ID", "data_type": "NUMBER", "nullable": False},
-                     {"column_name": "VENDOR_NAME", "data_type": "VARCHAR2", "nullable": False, "data_length": 240},
-                     {"column_name": "SEGMENT1", "data_type": "VARCHAR2", "nullable": False, "data_length": 30},
-                     {"column_name": "VAT_REGISTRATION_NUM", "data_type": "VARCHAR2", "nullable": True, "data_length": 20},
-                     {"column_name": "ENABLED_FLAG", "data_type": "VARCHAR2", "nullable": False, "data_length": 1},
-                 ], "primary_key": ["VENDOR_ID"], "estimated_rows": 12000},
-                {"name": "PER_ALL_PEOPLE_F", "module": "HCM", "classification": "master_data",
-                 "columns": [
-                     {"column_name": "PERSON_ID", "data_type": "NUMBER", "nullable": False},
-                     {"column_name": "EMPLOYEE_NUMBER", "data_type": "VARCHAR2", "nullable": True, "data_length": 30},
-                     {"column_name": "FIRST_NAME", "data_type": "VARCHAR2", "nullable": True, "data_length": 150},
-                     {"column_name": "LAST_NAME", "data_type": "VARCHAR2", "nullable": False, "data_length": 150},
-                     {"column_name": "EMAIL_ADDRESS", "data_type": "VARCHAR2", "nullable": True, "data_length": 240},
-                     {"column_name": "EFFECTIVE_START_DATE", "data_type": "DATE", "nullable": False},
-                     {"column_name": "CURRENT_EMPLOYEE_FLAG", "data_type": "VARCHAR2", "nullable": True, "data_length": 1},
-                     {"column_name": "NATIONAL_IDENTIFIER", "data_type": "VARCHAR2", "nullable": True, "data_length": 30},
-                 ], "primary_key": ["PERSON_ID"], "estimated_rows": 95000},
-                {"name": "PAY_PAYROLL_ACTIONS", "module": "HCM", "classification": "transactional",
-                 "columns": [
-                     {"column_name": "PAYROLL_ACTION_ID", "data_type": "NUMBER", "nullable": False},
-                     {"column_name": "ACTION_TYPE", "data_type": "VARCHAR2", "nullable": False, "data_length": 30},
-                     {"column_name": "ACTION_STATUS", "data_type": "VARCHAR2", "nullable": False, "data_length": 1},
-                     {"column_name": "EFFECTIVE_DATE", "data_type": "DATE", "nullable": False},
-                     {"column_name": "PAYROLL_ID", "data_type": "NUMBER", "nullable": True},
-                 ], "primary_key": ["PAYROLL_ACTION_ID"], "estimated_rows": 1800000},
-            ]
-        }
+        logger.info("MOCK: Fetching schema metadata from JSON")
+        metadata_file = self._mock_data_path / "schema_metadata.json"
+        try:
+            with open(metadata_file, "r") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to load mock schema metadata: {e}")
+            return {"tables": []}
 
     async def execute_query(self, query: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         logger.info(f"MOCK: Executing query: {query[:80]}...")

@@ -9,11 +9,14 @@ from infrastructure.adapters.mock_reconciliation_adapter import MockReconciliati
 from infrastructure.adapters.dbt_generator_adapter import DbtGeneratorAdapter
 from infrastructure.adapters.alloydb_adapter import AlloyDBAdapter
 from infrastructure.adapters.vertex_ai_adapter import VertexAIAdapter
+from infrastructure.adapters.pdpl_adapter import PDPLComplianceAdapter
+from infrastructure.adapters.mock_cdc_adapter import MockCDCAdapter
 from infrastructure.adapters.logging_event_bus import LoggingEventBus
 from domain.services.org_service import MultiOrgResolver
 from domain.services.reconciliation_service import ReconciliationService
 from domain.services.code_generator_service import CodeGeneratorService
 from domain.services.plsql_translator_service import PLSQLTranslatorService
+from domain.services.cdc_service import CDCOrchestrationService
 from infrastructure.mcp_servers.sie_server import OracleForgeSIEServer
 from application.use_cases.ai_workflows.multi_agent_orchestrator import MultiAgentOrchestrator
 from application.use_cases.migration_pipeline import MigrationPipelineUseCase
@@ -67,6 +70,15 @@ class Container(containers.DeclarativeContainer):
         )
     )
 
+    # CDC Adapter (mock for now as per plan)
+    cdc_adapter = providers.Singleton(MockCDCAdapter)
+
+    # Compliance Adapter
+    compliance_adapter = providers.Singleton(
+        PDPLComplianceAdapter,
+        project_id=config.gcp.project_id
+    )
+
     # Secret Manager Adapter
     secret_adapter = providers.Singleton(
         GCPSecretAdapter,
@@ -107,6 +119,8 @@ class Container(containers.DeclarativeContainer):
     code_generator_service = providers.Factory(CodeGeneratorService)
 
     plsql_translator_service = providers.Factory(PLSQLTranslatorService)
+
+    cdc_service = providers.Factory(CDCOrchestrationService)
 
     # Application Use Cases
     migration_pipeline = providers.Factory(
