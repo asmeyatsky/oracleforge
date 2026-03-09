@@ -1,0 +1,29 @@
+# ---------------------------------------------------------------------------
+# OracleForge GCP Landing Zone — Example Variable Values
+# ---------------------------------------------------------------------------
+# Copy this file to terraform.tfvars and fill in your values.
+#   cp terraform.tfvars.example terraform.tfvars
+# ---------------------------------------------------------------------------
+
+project_id  = "my-gcp-project-id"
+region      = "us-central1"          # or "me-central1" / "me-central2"
+environment = "dev"                   # dev | staging | prod
+
+# ── Oracle Source ───────────────────────────────────────────────────────────
+oracle_host     = "10.128.0.50"
+oracle_port     = 1521
+oracle_username = "DATASTREAM_USER"
+oracle_password = "CHANGE_ME"
+oracle_database = "EBSPROD"
+oracle_schemas  = ["APPS", "AR", "AP", "GL", "INV", "PO"]
+
+# ── Networking ──────────────────────────────────────────────────────────────
+vpc_cidr    = "10.0.0.0/16"
+subnet_cidr = "10.0.1.0/24"
+psc_cidr    = "10.0.64.0/20"
+
+# ── Extra labels (optional) ────────────────────────────────────────────────
+labels = {
+  cost_center = "data-platform"
+  owner       = "oracleforge-team"
+}
